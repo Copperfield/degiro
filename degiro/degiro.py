@@ -5,8 +5,8 @@ from datetime import datetime
 from collections import defaultdict
 
 
-class degiro:
-    credentiasl = ['username', 'password']
+class Degiro:
+    credentials = ['username', 'password']
     urls = {
             'login': 'https://trader.degiro.nl/login/secure/login'
     }
