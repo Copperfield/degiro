@@ -1,24 +1,40 @@
 import requests
 import json
+import os
 from datetime import datetime
 from collections import defaultdict
 
+
 class degiro:
+    credentiasl = ['username', 'password']
+    urls = {
+            'login': 'https://trader.degiro.nl/login/secure/login'
+    }
+
     def __init__(self):
         self.user = dict()
         self.data = None
-    
+        self.sesion = requests.Session()
+        self._get_credentials()
+
+    def _get_credentials(self):
+        for credential in self.credentials:
+            try:
+                setattr(self, credential, os.environ[credential])
+            except KeyError:
+                raise KeyError(
+                        f"You must to define {credential}"
+                        "as enviroment variable")
+
     def login(self, conf_path):
-        conf = json.load(open(conf_path))
-        self.sess = requests.Session()
-        
+
         # Login
-        url = 'https://trader.degiro.nl/login/secure/login'
-        payload = {'username': conf['username'],
-                   'password': conf['password'],
+        url = self.credentials['login']
+        payload = {'username': self.username,
+                   'password': self.password,
                    'isPassCodeReset': False,
                    'isRedirectToMobile': False}
-        header={'content-type': 'application/json'}
+        header = {'content-type': 'application/json'}
 
         r = self.sess.post(url, headers=header, data=json.dumps(payload))
         print('Login')
@@ -30,7 +46,7 @@ class degiro:
         self.sessid = self.sessid.split('=')[1]
 
         print('\tSession id: {}'.format(self.sessid))
-        
+
     # This contain loads of user data, main interest here is the 'intAccount'
     def getConfig(self):
         url = 'https://trader.degiro.nl/pa/secure/client'
@@ -42,9 +58,9 @@ class degiro:
 
         data = r.json()
         self.user['intAccount'] = data['data']['intAccount']
-        
+
         print('\tAccount id: {}'.format(self.user['intAccount']))
-        
+
     # This gets a lot of data, orders, news, portfolio, cash funds etc.
     def getData(self):
         url = 'https://trader.degiro.nl/trading/secure/v5/update/'
@@ -68,8 +84,8 @@ class degiro:
 
     # Get the cash funds
     def getCashFunds(self):
-        if self.data == None:
-            self.getData()       
+        if self.data is None:
+            self.getData()
         cashFunds = dict()
         for cf in self.data['cashFunds']['value']:
             entry = dict()
@@ -81,24 +97,24 @@ class degiro:
                 entry[y['name']] = y['value']
             cashFunds[key] = entry
         return cashFunds
-    
+
     # Only returns a summary of the portfolio
     def getPortfolioSummary(self):
         pf = self.getPortfolio()
         cf = self.getCashFunds()
         tot = 0
         for eq in pf['PRODUCT'].values():
-            tot += eq['value']     
+            tot += eq['value']
 
         pfSummary = dict()
         pfSummary['equity'] = tot
         pfSummary['cash'] = cf['EUR']['value']
         return pfSummary
-    
+
     # Returns the entire portfolio
     def getPortfolio(self):
-        if self.data == None:
-            self.getData()       
+        if self.data is None:
+            self.getData()
         portfolio = []
         for row in self.data['portfolio']['value']:
             entry = dict()
@@ -112,27 +128,30 @@ class degiro:
             if entry['size'] != 0:
                 portfolio.append(entry)
 
-        ## Restructure portfolio and add extra data
+        # Restructure portfolio and add extra data
         portf_n = defaultdict(dict)
         # Restructuring
         for r in portfolio:
             pos_type = r['positionType']
-            pid = r['id'] # Product ID
+            pid = r['id']  # Product ID
             del(r['positionType'])
             del(r['id'])
-            portf_n[pos_type][pid]= r
+            portf_n[pos_type][pid] = r
 
         # Adding extra data
         url = 'https://trader.degiro.nl/product_search/secure/v5/products/info'
         params = {'intAccount': str(self.user['intAccount']),
                   'sessionId': self.sessid}
-        header={'content-type': 'application/json'}
+        header = {'content-type': 'application/json'}
         pid_list = list(portf_n['PRODUCT'].keys())
-        r = self.sess.post(url, headers=header, params=params, data=json.dumps(pid_list))
+        r = self.sess.post(url,
+                           headers=header,
+                           params=params,
+                           data=json.dumps(pid_list))
         print('\tGetting extra data')
         print('\t\tStatus code: {}'.format(r.status_code))
 
-        for k,v in r.json()['data'].items():
+        for k, v in r.json()['data'].items():
             del(v['id'])
             # Some bonds tend to have a non-unit size
             portf_n['PRODUCT'][k]['size'] *= v['contractSize']
@@ -152,22 +171,22 @@ class degiro:
         r = self.sess.get(url, params=payload)
         print('Get account overview')
         print('\tStatus code: {}'.format(r.status_code))
-        
+
         data = r.json()
         movs = []
         for rmov in data['data']['cashMovements']:
             mov = dict()
             # Reformat timezone part: +01:00 -> +0100
-            date = ''.join(rmov['date'].rsplit(':',1))
-            date = datetime.strptime(date,'%Y-%m-%dT%H:%M:%S%z')
+            date = ''.join(rmov['date'].rsplit(':', 1))
+            date = datetime.strptime(date, '%Y-%m-%dT%H:%M:%S%z')
             mov['date'] = date
             mov['change'] = rmov['change']
             mov['currency'] = rmov['currency']
             mov['description'] = rmov['description']
             mov['type'] = rmov['type']
             if 'orderId' in rmov:
-                 mov['orderId'] = rmov['orderId']
+                mov['orderId'] = rmov['orderId']
             if 'productId' in rmov:
-                 mov['productId'] = rmov['productId']
-            movs.append(mov)        
+                mov['productId'] = rmov['productId']
+            movs.append(mov)
         return movs
