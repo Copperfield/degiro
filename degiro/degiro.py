@@ -14,7 +14,7 @@ class Degiro:
     def __init__(self):
         self.user = dict()
         self.data = None
-        self.sesion = requests.Session()
+        self.session = requests.Session()
         self._get_credentials()
 
     def _get_credentials(self):
@@ -26,26 +26,24 @@ class Degiro:
                         f"You must to define {credential}"
                         "as enviroment variable")
 
-    def login(self, conf_path):
+    def _set_session_id(self, set_cookie):
+        session_id = set_cookie
+        self.session_id = session_id.split(';')[0].split('=')[1]
 
-        # Login
-        url = self.credentials['login']
+    def login(self):
+
+        url = self.urls['login']
         payload = {'username': self.username,
                    'password': self.password,
                    'isPassCodeReset': False,
                    'isRedirectToMobile': False}
         header = {'content-type': 'application/json'}
 
-        r = self.sess.post(url, headers=header, data=json.dumps(payload))
-        print('Login')
-        print('\tStatus code: {}'.format(r.status_code))
+        response = self.session.post(url, headers=header,
+                                     data=json.dumps(payload))
 
-        # Get session id
-        self.sessid = r.headers['Set-Cookie']
-        self.sessid = self.sessid.split(';')[0]
-        self.sessid = self.sessid.split('=')[1]
+        self._set_session_id(response.headers['Set-Cookie'])
 
-        print('\tSession id: {}'.format(self.sessid))
 
     # This contain loads of user data, main interest here is the 'intAccount'
     def getConfig(self):
